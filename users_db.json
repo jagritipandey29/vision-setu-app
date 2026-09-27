@@ -1,0 +1,8 @@
+{
+    "admin": {
+        "password": "admin",
+        "full_name": "Dr. Admin",
+        "gender": "Male",
+        "age": 45
+    }
+}
