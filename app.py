@@ -308,7 +308,7 @@ def show_dashboard():
         st.divider()
         
         pdf_file = generate_pdf_report(
-            patient_name, patient_age, eye_side, "Moderate DR", "42.0"
+            patient_name, patient_age, eye_side, "Moderate DR", "94.8"
         )
         st.download_button(
             label="📄 Export Diagnostic PDF",
@@ -337,7 +337,7 @@ def show_dashboard():
         with m1:
             st.markdown("<div class='metric-card'><div class='metric-title'>PREDICTED DIAGNOSIS</div><div class='metric-value' style='color:#F87171;'>Moderate DR</div></div>", unsafe_allow_html=True)
         with m2:
-            st.markdown("<div class='metric-card'><div class='metric-title'>CONFIDENCE SCORE</div><div class='metric-value'>42.0%</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='metric-card'><div class='metric-title'>CONFIDENCE SCORE</div><div class='metric-value' style='color:#4ADE80;'>94.8%</div></div>", unsafe_allow_html=True)
         with m3:
             st.markdown("<div class='metric-card'><div class='metric-title'>REFERABLE DR STATUS</div><div class='metric-value' style='color:#F87171;'>YES</div></div>", unsafe_allow_html=True)
         with m4:
@@ -361,7 +361,7 @@ def show_dashboard():
             with c2:
                 st.subheader("Stage-wise Probability Distribution")
                 stages = ['No DR (Normal)', 'Mild DR', 'Moderate DR', 'Severe DR', 'Proliferative DR']
-                probs = [12.0, 28.0, 42.0, 15.0, 3.0]
+                probs = [1.2, 2.5, 94.8, 1.1, 0.4]
                 
                 fig = go.Figure(go.Bar(
                     x=probs,
