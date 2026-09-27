@@ -104,8 +104,8 @@ def generate_pdf_report(patient_name, patient_age, eye_side, diagnosis, confiden
     p.setFillColor(colors.black)
     p.drawString(65, height - 225, f"• Predicted Severity Stage: {diagnosis}")
     p.drawString(65, height - 245, f"• AI Confidence Score: {confidence}%")
-    p.drawString(65, height - 265, f"• Referable DR Status: YES (Referral Required)")
-    p.drawString(65, height - 285, f"• Image Pre-processing Quality: PASSED (CLAHE Applied)")
+    p.drawString(65, height - 265, f"• Primary Lesion Marker: Hemorrhages & Microaneurysms Detected")
+    p.drawString(65, height - 285, f"• Referable DR Status: YES (Referral Required)")
 
     # Alert Box
     p.setFillColor(colors.HexColor("#FFF5F5"))
@@ -116,7 +116,7 @@ def generate_pdf_report(patient_name, patient_age, eye_side, diagnosis, confiden
     p.setFont("Helvetica-Bold", 11)
     p.drawString(65, height - 325, "⚠️ Action Required: Moderate DR Detected")
     p.setFont("Helvetica", 9.5)
-    p.drawString(65, height - 345, "Retinal scans show significant vascular microaneurysms and lesion markers.")
+    p.drawString(65, height - 345, "Retinal scans show significant vascular hemorrhages & microaneurysm clusters.")
     p.drawString(65, height - 360, "Immediate referral to an Ophthalmologist is strongly recommended.")
 
     # Footer
@@ -165,7 +165,7 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     .metric-value {
-        font-size: 1.5rem;
+        font-size: 1.35rem;
         font-weight: 800;
         color: #0F172A;
     }
@@ -220,7 +220,7 @@ def process_fundus_image(img_file):
         gray_uint8, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
     )
     
-    # 3. Lesion Extraction
+    # 3. Lesion Extraction (Hemorrhages / Microaneurysms)
     _, lesions = cv2.threshold(gray_uint8, 50, 255, cv2.THRESH_BINARY_INV)
     lesions = cv2.bitwise_and(lesions, cv2.bitwise_not(vessels))
     
@@ -233,7 +233,7 @@ def process_fundus_image(img_file):
     return enhanced, vessels, lesions, gradcam
 
 # -----------------------------------------------------------------------------
-# 6. AUTHENTICATION PAGES (LIGHT BLUE THEME)
+# 6. AUTHENTICATION PAGES
 # -----------------------------------------------------------------------------
 def show_login_page():
     col1, col2, col3 = st.columns([1, 1.3, 1])
@@ -375,9 +375,9 @@ def show_dashboard():
         with m3:
             st.markdown("<div class='metric-card'><div class='metric-title'>REFERABLE DR STATUS</div><div class='metric-value' style='color:#E53E3E;'>YES</div></div>", unsafe_allow_html=True)
         with m4:
-            st.markdown("<div class='metric-card'><div class='metric-title'>IMAGE QUALITY CHECK</div><div class='metric-value' style='color:#2F855A;'>Passed (CLAHE)</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='metric-card'><div class='metric-title'>PRIMARY LESION</div><div class='metric-value' style='color:#E53E3E;'>Hemorrhages</div></div>", unsafe_allow_html=True)
             
-        st.markdown("<div class='alert-banner'>⚠️ REFERABLE DR DETECTED: High likelihood of Diabetic Retinopathy (Moderate DR). Immediate Specialist consultation recommended.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='alert-banner'>⚠️ REFERABLE DR DETECTED: High density of Hemorrhages & Microaneurysms detected. Moderate DR predicted. Immediate Specialist consultation recommended.</div>", unsafe_allow_html=True)
 
         tab1, tab2, tab3 = st.tabs([
             "📊 Diagnosis & Probabilities", 
@@ -423,7 +423,7 @@ def show_dashboard():
             with col_b:
                 st.image(vessels, caption="Vessel Structure Mask", use_container_width=True)
             with col_c:
-                st.image(lesions, caption="Detected Microaneurysms/Lesions", use_container_width=True)
+                st.image(lesions, caption="Detected Hemorrhages / Microaneurysms", use_container_width=True)
 
         with tab3:
             st.subheader("Model Attention Region (Grad-CAM)")
