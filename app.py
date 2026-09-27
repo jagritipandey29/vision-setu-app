@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import re
 import numpy as np
 import cv2
 from PIL import Image
@@ -50,7 +51,17 @@ if "page" not in st.session_state:
     st.session_state["page"] = "login"
 
 # -----------------------------------------------------------------------------
-# 2. PDF REPORT GENERATOR FUNCTION
+# 2. ALPHANUMERIC VALIDATION FUNCTION
+# -----------------------------------------------------------------------------
+def is_alphanumeric_password(password):
+    # Must contain at least one letter and at least one digit, and be at least 6 chars
+    has_letter = bool(re.search(r'[a-zA-Z]', password))
+    has_digit = bool(re.search(r'[0-9]', password))
+    is_length = len(password) >= 6
+    return has_letter and has_digit and is_length
+
+# -----------------------------------------------------------------------------
+# 3. PDF REPORT GENERATOR FUNCTION
 # -----------------------------------------------------------------------------
 def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinician_name):
     buffer = BytesIO()
@@ -61,7 +72,7 @@ def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinic
     p.setFillColor(colors.HexColor("#003366"))
     p.rect(0, height - 20, width, 20, fill=True, stroke=False)
 
-    # Title & Subtitle
+    # Title
     p.setFillColor(colors.HexColor("#003366"))
     p.setFont("Helvetica-Bold", 20)
     p.drawString(50, height - 60, "VISION SETU - CLINICAL DR SCREENING REPORT")
@@ -69,12 +80,11 @@ def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinic
     p.setFillColor(colors.HexColor("#555555"))
     p.drawString(50, height - 75, "AI-Assisted Retinal Diagnostics & Telemedicine Portal")
     
-    # Horizontal Divider Line
     p.setStrokeColor(colors.HexColor("#003366"))
     p.setLineWidth(1.5)
     p.line(50, height - 85, width - 50, height - 85)
 
-    # Patient & Clinician Metadata Box
+    # Patient Metadata
     p.setFillColor(colors.HexColor("#F4F6F9"))
     p.rect(50, height - 170, width - 100, 75, fill=True, stroke=True)
     
@@ -88,7 +98,7 @@ def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinic
     p.drawString(320, height - 130, f"Eye Evaluated: {eye_side}")
     p.drawString(65, height - 150, f"Screening Method: Automated ONNX Deep Neural Network + CLAHE")
 
-    # Diagnostic Findings
+    # Diagnostic Summary
     p.setFont("Helvetica-Bold", 13)
     p.setFillColor(colors.HexColor("#003366"))
     p.drawString(50, height - 200, "Diagnostic Assessment Summary")
@@ -100,7 +110,7 @@ def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinic
     p.drawString(65, height - 265, f"• Referable DR Status: YES (Referral Required)")
     p.drawString(65, height - 285, f"• Image Pre-processing Quality: PASSED (CLAHE Applied)")
 
-    # Clinical Alert Box
+    # Alert Box
     p.setFillColor(colors.HexColor("#FFF3CD"))
     p.setStrokeColor(colors.HexColor("#FFEEBA"))
     p.rect(50, height - 370, width - 100, 65, fill=True, stroke=True)
@@ -112,7 +122,7 @@ def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinic
     p.drawString(65, height - 345, "Retinal scans show significant vascular microaneurysms and lesion markers.")
     p.drawString(65, height - 360, "Immediate referral to an Ophthalmologist is strongly recommended.")
 
-    # MATLAB Telemedicine Allocation Metrics
+    # MATLAB Allocation Metrics
     p.setFont("Helvetica-Bold", 12)
     p.setFillColor(colors.HexColor("#003366"))
     p.drawString(50, height - 400, "District Telemedicine Workflow Model (Simulink Driven)")
@@ -123,7 +133,7 @@ def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinic
     p.drawString(65, height - 435, "• Daily Processing Queue: ~136 Scans/day")
     p.drawString(65, height - 450, "• Estimated Doctor Review Load: 1.2 Hours/day")
 
-    # Footer Disclaimer
+    # Footer
     p.setFont("Helvetica-Oblique", 8)
     p.setFillColor(colors.HexColor("#777777"))
     p.drawString(50, 50, "Disclaimer: This AI report is generated for clinical decision support. Final diagnosis must be verified by a certified Specialist.")
@@ -135,7 +145,7 @@ def generate_pdf_report(patient_id, age, eye_side, diagnosis, confidence, clinic
     return buffer
 
 # -----------------------------------------------------------------------------
-# 3. CUSTOM STYLING (LIGHT & DARK THEMES COMPATIBLE)
+# 4. CUSTOM STYLING
 # -----------------------------------------------------------------------------
 st.markdown("""
 <style>
@@ -174,34 +184,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 4. IMAGE PROCESSING ENGINE
+# 5. FIXED IMAGE PROCESSING ENGINE (OPENCV uint8 SAFE)
 # -----------------------------------------------------------------------------
 def process_fundus_image(img_file):
     image = Image.open(img_file).convert('RGB')
-    img_np = np.array(image)
+    img_np = np.array(image, dtype=np.uint8)
     
+    # 1. CLAHE Enhancement
     lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
     l, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
     cl = clahe.apply(l)
     enhanced = cv2.cvtColor(cv2.merge((cl,a,b)), cv2.COLOR_LAB2RGB)
     
+    # 2. Vessel Masking
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+    gray_uint8 = np.uint8(gray)
     vessels = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+        gray_uint8, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
     )
     
-    _, lesions = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY_INV)
+    # 3. Lesion Extraction
+    _, lesions = cv2.threshold(gray_uint8, 50, 255, cv2.THRESH_BINARY_INV)
     lesions = cv2.bitwise_and(lesions, cv2.bitwise_not(vessels))
     
-    heatmap = cv2.applyColorMap(cv2.equalize(gray), cv2.COLORMAP_JET)
+    # 4. Grad-CAM Heatmap Overlay
+    equalized_gray = cv2.equalizeHist(gray_uint8)
+    heatmap = cv2.applyColorMap(equalized_gray, cv2.COLORMAP_JET)
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
     gradcam = cv2.addWeighted(enhanced, 0.6, heatmap, 0.4, 0)
     
     return enhanced, vessels, lesions, gradcam
 
 # -----------------------------------------------------------------------------
-# 5. AUTHENTICATION (LOGIN & REGISTER)
+# 6. AUTHENTICATION (LOGIN & REGISTER WITH ALPHANUMERIC PASS CHECK)
 # -----------------------------------------------------------------------------
 def show_login_page():
     col1, col2, col3 = st.columns([1, 1.2, 1])
@@ -242,11 +258,13 @@ def show_register_page():
         gender = st.selectbox("Gender", ["Male", "Female", "Other"])
         age = st.number_input("Age", min_value=18, max_value=100, value=30)
         reg_username = st.text_input("Username")
-        reg_password = st.text_input("Password", type="password")
+        reg_password = st.text_input("Password", type="password", help="Password must be alphanumeric (letters + numbers) and at least 6 characters long.")
         
         if st.button("CREATE ACCOUNT", use_container_width=True, type="primary"):
             if not reg_username or not reg_password or not full_name:
                 st.warning("Please fill all required fields!")
+            elif not is_alphanumeric_password(reg_password):
+                st.error("⚠️ Invalid Password! Password must be Alphanumeric (contain both letters & numbers) and at least 6 characters long.")
             else:
                 users = load_users()
                 if reg_username in users:
@@ -263,7 +281,7 @@ def show_register_page():
             st.rerun()
 
 # -----------------------------------------------------------------------------
-# 6. DASHBOARD WITH PDF REPORT DOWNLOAD
+# 7. MAIN DASHBOARD
 # -----------------------------------------------------------------------------
 def show_dashboard():
     users = load_users()
@@ -284,7 +302,6 @@ def show_dashboard():
         
         st.divider()
         
-        # PDF Report Generation Button in Sidebar
         pdf_file = generate_pdf_report(
             patient_id, patient_age, eye_side, "Moderate DR", "42.0", clinician_name
         )
@@ -303,7 +320,6 @@ def show_dashboard():
             st.session_state["page"] = "login"
             st.rerun()
 
-    # Main Dashboard UI
     st.title("Diabetic Retinopathy Screening Dashboard")
     
     top_col1, top_col2 = st.columns([3, 1])
@@ -311,7 +327,6 @@ def show_dashboard():
         uploaded_file = st.file_uploader("Upload Retinal Fundus Scan Image", type=["jpg", "png", "jpeg"])
     with top_col2:
         st.markdown("<br>", unsafe_allow_html=True)
-        # Direct Header PDF Button
         st.download_button(
             label="📄 Quick PDF Report",
             data=pdf_file,
@@ -320,7 +335,6 @@ def show_dashboard():
             use_container_width=True
         )
 
-    # Metrics Display
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.markdown("<div class='metric-card'><div class='metric-title'>PREDICTED DIAGNOSIS</div><div class='metric-value'>Moderate DR</div></div>", unsafe_allow_html=True)
@@ -340,7 +354,6 @@ def show_dashboard():
         orig_img = np.zeros((400, 400, 3), dtype=np.uint8) + 255
         enhanced, vessels, lesions, gradcam = orig_img, orig_img, orig_img, orig_img
 
-    # Dashboard Tabs
     tab1, tab2, tab3, tab4 = st.tabs([
         "📊 Diagnosis & Probabilities", 
         "🔍 Structural Lesion Masking", 
@@ -420,7 +433,7 @@ def show_dashboard():
         )
 
 # -----------------------------------------------------------------------------
-# 7. MAIN CONTROLLER
+# 8. MAIN CONTROLLER
 # -----------------------------------------------------------------------------
 def main():
     if not st.session_state["authenticated"]:
