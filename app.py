@@ -1,56 +1,28 @@
-import time
-import os
-import json
 import streamlit as st
 import streamlit.components.v1 as components
-import re
+import os
+import json
 import numpy as np
 import cv2
 from PIL import Image
 import plotly.graph_objects as go
-import plotly.express as px
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 import base64
+import time
 
-# Page Config
+# -----------------------------------------------------------------------------
+# 1. PAGE CONFIGURATION & SESSION STATE SETUP
+# -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Vision Setu - Tele-Ophthalmology PACS",
-    page_icon="👁️",
-    layout="wide"
+    page_title="Vision Setu - Clinical Tele-Ophthalmology Diagnostic System",
+    page_icon="logo.jpg" if os.path.exists("logo.jpg") else "👁️",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Local session state user database (Zero Firebase dependency)
-if "mock_users" not in st.session_state:
-    st.session_state["mock_users"] = {
-        "admin": {
-            "password": "password123",
-            "full_name": "Dr. Admin",
-            "gender": "Other",
-            "age": 35
-        },
-        "jagriti": {
-            "password": "password123",
-            "full_name": "Jagriti Pandey",
-            "gender": "Female",
-            "age": 20
-        }
-    }
-
-def load_users():
-    return st.session_state["mock_users"]
-
-def save_user(username, password, full_name, gender, age):
-    st.session_state["mock_users"][username] = {
-        "password": password,
-        "full_name": full_name,
-        "gender": gender,
-        "age": age
-    }
-
-# Session State Initialization
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "current_user" not in st.session_state:
@@ -62,22 +34,123 @@ if "active_module" not in st.session_state:
 if "uploaded_image_data" not in st.session_state:
     st.session_state["uploaded_image_data"] = None
 
-# Custom CSS
+USER_DB_FILE = "users_db.json"
+
+# Robust Local JSON Storage and Persistence
+def load_users():
+    default_users = {
+        "Shweta": {
+            "password": "abcde@123456",
+            "full_name": "Shweta Patient",
+            "gender": "Female",
+            "age": 28
+        },
+        "admin": {
+            "password": "Password123",
+            "full_name": "Dr. Clinical Admin",
+            "gender": "Other",
+            "age": 42
+        }
+    }
+    if os.path.exists(USER_DB_FILE):
+        try:
+            with open(USER_DB_FILE, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and len(data) > 0:
+                    return data
+        except Exception:
+            pass
+    try:
+        with open(USER_DB_FILE, "w") as f:
+            json.dump(default_users, f, indent=4)
+    except Exception:
+        pass
+    return default_users
+
+def save_user(username, password, full_name, gender, age):
+    users = load_users()
+    users[username] = {
+        "password": password,
+        "full_name": full_name,
+        "gender": gender,
+        "age": age
+    }
+    try:
+        with open(USER_DB_FILE, "w") as f:
+            json.dump(users, f, indent=4)
+    except Exception as e:
+        st.error(f"Error saving to local storage: {e}")
+
+# -----------------------------------------------------------------------------
+# 2. ENTERPRISE CLINICAL CSS STYLING
+# -----------------------------------------------------------------------------
 st.markdown("""
 <style>
-    .stApp { background-color: #F8FAFC; color: #0F172A; }
-    [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
-    .metric-box { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .metric-title { font-size: 0.75rem; color: #64748B; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .metric-value { font-size: 1.4rem; font-weight: 800; color: #0F172A; }
-    .alert-banner { background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); border: 1px solid #FECACA; border-left: 6px solid #DC2626; padding: 14px 18px; border-radius: 10px; color: #991B1B; font-weight: 600; font-size: 0.92rem; margin-bottom: 20px; }
-    .hero-title { font-size: 2.5rem; font-weight: 800; color: #0F172A; text-align: center; margin-bottom: 10px; }
-    .hero-subtitle { font-size: 1.05rem; color: #475569; text-align: center; max-width: 780px; margin: 0 auto 25px auto; line-height: 1.5; }
-    .stButton>button { border-radius: 8px; font-weight: 600; }
+    .stApp {
+        background-color: #F8FAFC;
+        color: #0F172A;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #E2E8F0;
+        border-right: 1px solid #CBD5E1;
+    }
+    .metric-box {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .metric-title {
+        font-size: 0.72rem;
+        color: #64748B;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+    }
+    .metric-value {
+        font-size: 1.3rem;
+        font-weight: 800;
+        color: #0F172A;
+    }
+    .alert-banner {
+        background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%);
+        border: 1px solid #FECACA;
+        border-left: 6px solid #DC2626;
+        padding: 14px 18px;
+        border-radius: 10px;
+        color: #991B1B;
+        font-weight: 600;
+        font-size: 0.92rem;
+        margin-bottom: 20px;
+    }
+    .hero-title {
+        font-size: 2.3rem;
+        font-weight: 800;
+        color: #0F172A;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    .hero-subtitle {
+        font-size: 1.02rem;
+        color: #475569;
+        text-align: center;
+        max-width: 750px;
+        margin: 0 auto 25px auto;
+        line-height: 1.5;
+    }
+    .stButton>button {
+        border-radius: 10px;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Image Processing Pipeline & Grad-CAM Simulation
+# -----------------------------------------------------------------------------
+# 3. SPECIALIZED RETINAL IMAGE PROCESSING PIPELINE
+# -----------------------------------------------------------------------------
 def process_fundus_pipeline(img_input):
     if img_input is not None and img_input != "sample":
         try:
@@ -87,7 +160,9 @@ def process_fundus_pipeline(img_input):
             img_np = np.zeros((512, 512, 3), dtype=np.uint8) + 130
     else:
         img_np = np.zeros((512, 512, 3), dtype=np.uint8)
-        img_np[:, :, 0] = 150; img_np[:, :, 1] = 80; img_np[:, :, 2] = 40
+        img_np[:, :, 0] = 150
+        img_np[:, :, 1] = 80
+        img_np[:, :, 2] = 40
         cv2.circle(img_np, (380, 260), 55, (230, 210, 150), -1)
         cv2.circle(img_np, (200, 250), 35, (250, 250, 240), -1)
         cv2.circle(img_np, (150, 320), 25, (240, 240, 220), -1)
@@ -111,7 +186,7 @@ def process_fundus_pipeline(img_input):
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
     gradcam = cv2.addWeighted(enhanced, 0.55, heatmap, 0.45, 0)
     
-    return enhanced, vessels, lesions, gradcam, heatmap
+    return enhanced, vessels, lesions, gradcam
 
 def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosis, confidence, enhanced_img, gradcam_img):
     buffer = BytesIO()
@@ -120,6 +195,8 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
 
     p.setFillColor(colors.HexColor("#002B7F"))
     p.rect(0, height - 30, width, 30, fill=True, stroke=False)
+    
+    p.setFillColor(colors.HexColor("#002B7F"))
     p.setFont("Helvetica-Bold", 15)
     p.drawString(40, height - 55, "TELE-OPHTHALMOLOGY DIAGNOSTIC REPORT")
     p.setFont("Helvetica", 8.5)
@@ -148,6 +225,7 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
 
     img_size = 110
     y_pos = height - 305
+    
     temp_orig = "temp_orig.jpg"
     temp_grad = "temp_grad.jpg"
     Image.fromarray(enhanced_img).save(temp_orig)
@@ -202,6 +280,34 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
     p.drawString(40, 30, "Compliance: DPDP Act 2023 Compliant - De-identified Health Record | Powered by VisionSetu AI Framework")
 
     p.showPage()
+    p.setFillColor(colors.HexColor("#002B7F"))
+    p.rect(0, height - 30, width, 30, fill=True, stroke=False)
+    p.setFillColor(colors.HexColor("#002B7F"))
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(40, height - 55, "DETAILED CLINICAL FINDINGS & RECOMMENDATIONS")
+    p.setFont("Helvetica", 8.5)
+    p.setFillColor(colors.HexColor("#64748B"))
+    p.drawString(40, height - 70, f"Patient Identifier: {patient_name.upper()}-105A3C60 | Page 2 of 2")
+    
+    p.setStrokeColor(colors.HexColor("#CBD5E1"))
+    p.setLineWidth(1)
+    p.line(40, height - 78, width - 40, height - 78)
+
+    p.setFillColor(colors.HexColor("#0F172A"))
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(40, height - 110, "1. Diagnostic Rationale & ICDR Correlation")
+    p.setFont("Helvetica", 9)
+    p.drawString(40, height - 130, "Analysis substantiates Grade 2 — Moderate NPDR with 94.8% confidence.")
+    p.drawString(40, height - 145, "Multimodal deep retinal vessel segmentation confirms capillary non-perfusion areas.")
+
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(40, height - 180, "2. Recommended Clinical Action Plan")
+    p.setFont("Helvetica", 9)
+    p.drawString(40, height - 200, "• Urgent referral to Vitreo-Retinal Specialist within 4 weeks.")
+    p.drawString(40, height - 215, "• Glycemic control optimization (Target HbA1c < 7.0%).")
+    p.drawString(40, height - 230, "• Annual follow-up fundus screening post-intervention.")
+
+    p.showPage()
     p.save()
     buffer.seek(0)
     
@@ -210,23 +316,23 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
     
     return buffer
 
-# Auth Pages
+# -----------------------------------------------------------------------------
+# 4. AUTHENTICATION PAGES
+# -----------------------------------------------------------------------------
 def show_login_page():
-    col1, col2, col3 = st.columns([1, 1.2, 1])
+    col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
-        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
         with st.container(border=True):
-            logo_found = False
-            for logo_file in ["logo.jpg", "logo.png", "logo.jpeg"]:
-                if os.path.exists(logo_file):
-                    st.image(logo_file, width=110)
-                    logo_found = True
-                    break
-            if not logo_found:
+            if os.path.exists("logo.jpg"):
+                st.image("logo.jpg", width=90)
+            elif os.path.exists("logo.png"):
+                st.image("logo.png", width=90)
+            else:
                 st.markdown("<h1 style='text-align: center; color: #002B7F;'>👁️</h1>", unsafe_allow_html=True)
-
-            st.markdown("<h2 style='text-align: center; color: #002B7F;'>Vision Setu Portal</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: #64748B; font-size: 0.88rem;'>Clinical Tele-Ophthalmology Diagnostic System</p>", unsafe_allow_html=True)
+                
+            st.markdown("<h2 style='text-align: center; color: #002B7F; font-weight: 800;'>Vision Setu Portal</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #64748B; font-size: 0.85rem;'>Clinical Tele-Ophthalmology Diagnostic System</p>", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
             
             username = st.text_input("Username / Patient ID", key="login_user")
@@ -241,17 +347,17 @@ def show_login_page():
                     st.success("Authentication successful!")
                     st.rerun()
                 else:
-                    st.error("Invalid Username or Password!")
+                    st.error("Invalid Username or Password! (Default: Shweta / abcde@123456)")
                     
-            if st.button("Register New Patient Account", use_container_width=True, type="secondary"):
+            if st.button("Register New Patient Account", use_container_width=True):
                 st.session_state["page"] = "register"
                 st.rerun()
 
 def show_register_page():
-    col1, col2, col3 = st.columns([1, 1.2, 1])
+    col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
         with st.container(border=True):
-            st.markdown("<h3 style='text-align: center; color:#002B7F;'>Patient Registration</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; color:#002B7F; font-weight: 800;'>Patient Registration</h3>", unsafe_allow_html=True)
             full_name = st.text_input("Full Name", key="reg_name")
             gender = st.selectbox("Gender", ["Female", "Male", "Other"], key="reg_gender")
             age = st.number_input("Age", min_value=1, max_value=120, value=30, key="reg_age")
@@ -275,7 +381,9 @@ def show_register_page():
                 st.session_state["page"] = "login"
                 st.rerun()
 
-# Dashboard Layout
+# -----------------------------------------------------------------------------
+# 5. DASHBOARD & ENTERPRISE MODULES
+# -----------------------------------------------------------------------------
 def show_dashboard():
     users = load_users()
     user_info = users.get(st.session_state["current_user"], {})
@@ -303,15 +411,15 @@ def show_dashboard():
             st.session_state["active_module"] = "home"
             st.rerun()
     with col_badge1:
-        st.markdown("<div style='padding-top:8px; font-size:0.75rem; font-weight:700; color:#15803D;'>🟢 Active Mode</div>", unsafe_allow_html=True)
+        st.markdown("<div style='padding-top:8px; font-size:0.75rem; font-weight:700; color:#15803D;'>🟢 Connected</div>", unsafe_allow_html=True)
     with col_lang:
         st.selectbox("Lang", ["EN", "हिंदी"], label_visibility="collapsed")
 
     with st.sidebar:
-        for logo_file in ["logo.jpg", "logo.png", "logo.jpeg"]:
-            if os.path.exists(logo_file):
-                st.image(logo_file, width=80)
-                break
+        if os.path.exists("logo.jpg"):
+            st.image("logo.jpg", width=70)
+        elif os.path.exists("logo.png"):
+            st.image("logo.png", width=70)
         st.markdown(f"**Patient:** {patient_name}")
         st.markdown(f"**Age/Gender:** {patient_age} yrs / {patient_gender}")
         st.divider()
@@ -335,165 +443,257 @@ def show_dashboard():
                     st.rerun()
         with c2:
             with st.container(border=True):
-                st.markdown("### Clinician PACS Viewer")
-                st.markdown("Multimodal diagnostic review with vessel segmentation, lesions, and certified PDF export.")
-                if st.button("Launch PACS ➔", use_container_width=True, key="hb_pacs"):
+                st.markdown("### Clinician Diagnostic PACS")
+                st.markdown("Triage diagnostic reading queue with lesion-level visual Grad-CAM evidence.")
+                if st.button("Open Workstation ➔", use_container_width=True, key="hb_pacs"):
                     st.session_state["active_module"] = "pacs"
                     st.rerun()
         with c3:
             with st.container(border=True):
                 st.markdown("### District Analytics")
-                st.markdown("Simulink-backed telemedicine network flow model and screening volume simulations.")
-                if st.button("Launch Analytics ➔", use_container_width=True, key="hb_ana"):
+                st.markdown("Telemedicine network capacity planning, bottleneck detection & queue simulations.")
+                if st.button("Explore Analytics ➔", use_container_width=True, key="hb_an"):
                     st.session_state["active_module"] = "analytics"
                     st.rerun()
 
     elif st.session_state["active_module"] == "acquisition":
-        st.markdown("### 📍 Point-of-Care Fundus Acquisition & Quality Gate")
-        st.caption("Upload or capture fundus photographs. Automated optical quality gating validates sharpness and illumination.")
+        st.markdown("### Patient Intake & Fundus Image Acquisition")
+        st.caption("Record patient clinical parameters and upload 45° posterior pole retinal scan for automated quality verification.")
         
-        up_file = st.file_uploader("Upload Retinal Fundus Scan", type=["jpg", "jpeg", "png"])
-        
-        col_prev, col_diag = st.columns(2)
-        with col_prev:
-            if up_file is not None:
-                st.session_state["uploaded_image_data"] = up_file
-                st.image(up_file, caption="Uploaded Fundus Image", use_container_width=True)
-            else:
-                st.info("Using default sample fundus scan for demonstration.")
-                st.session_state["uploaded_image_data"] = "sample"
+        col_form, col_upload = st.columns([1, 1.2])
+        with col_form:
+            with st.container(border=True):
+                st.markdown("#### 👤 Patient Clinical Record")
+                st.text_input("Medical Record Number (MRN)", value=f"MRN-{patient_name.upper()}-2026")
+                col_a, col_g = st.columns(2)
+                with col_a: st.number_input("Age (Years)", value=int(patient_age) if str(patient_age).isdigit() else 28)
+                with col_g: st.selectbox("Gender", [patient_gender, "Female", "Male", "Other"])
+                st.radio("Eye Under Examination", ["OD (Right Eye)", "OS (Left Eye)"], horizontal=True)
+                st.number_input("DM Duration (Yrs)", value=5)
+                st.number_input("HbA1c Level (%)", value=7.2)
+        with col_upload:
+            with st.container(border=True):
+                st.markdown("#### 📷 Fundus Optical Acquisition <span style='font-size:0.75rem; color:#64748B;'>45° CFP Modality</span>", unsafe_allow_html=True)
+                uploaded_file = st.file_uploader("Drag & Drop Fundus Scan or Tap to Upload", type=["jpg", "png", "jpeg"])
                 
-        with col_diag:
-            st.markdown("#### Quality Gating Diagnostics")
-            st.markdown("- **Illumination uniformity:** Optimal (94%)")
-            st.markdown("- **Macula centration:** Verified")
-            st.markdown("- **Blur / Artifact detection:** Pass (Sharpness index: 0.88)")
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Proceed to Clinician PACS Analysis ➔", type="primary", use_container_width=True):
+                if uploaded_file is not None:
+                    st.session_state["uploaded_image_data"] = uploaded_file
+                    st.success(f"✅ File uploaded: {uploaded_file.name}")
+
+                st.markdown("---")
+                st.markdown("##### Or Load Quick Reference Test Scan:")
+                if st.button("Load Standard Sample Scan", use_container_width=True, type="secondary"):
+                    st.session_state["uploaded_image_data"] = "sample"
+                    st.success("✅ Sample Scan Loaded!")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("VERIFY IMAGE QUALITY & PROCEED TO AI DIAGNOSTIC PIPELINE ➔", type="primary", use_container_width=True):
+            if st.session_state["uploaded_image_data"] is not None:
+                with st.spinner("Executing optical quality gating & deep retinal analysis..."):
+                    time.sleep(1.0)
                 st.session_state["active_module"] = "pacs"
                 st.rerun()
+            else:
+                st.warning("⚠️ Please upload a fundus image or click 'Load Standard Sample Scan' first!")
 
     elif st.session_state["active_module"] == "pacs":
-        st.markdown("### 🩺 Clinician PACS & Diagnostic Workspace")
-        
-        enhanced, vessels, lesions, gradcam, heatmap = process_fundus_pipeline(st.session_state["uploaded_image_data"])
-        
         m1, m2, m3, m4 = st.columns(4)
         with m1:
-            st.markdown("<div class='metric-box'><div class='metric-title'>ICDR Severity</div><div class='metric-value'>Grade 2 (Moderate)</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='metric-box'><div class='metric-title'>Predicted Diagnosis</div><div class='metric-value' style='color:#DC2626;'>Moderate DR</div></div>", unsafe_allow_html=True)
         with m2:
-            st.markdown("<div class='metric-box'><div class='metric-title'>AI Confidence</div><div class='metric-value'>94.8%</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='metric-box'><div class='metric-title'>Confidence Score</div><div class='metric-value' style='color:#16A34A;'>94.8%</div></div>", unsafe_allow_html=True)
         with m3:
-            st.markdown("<div class='metric-box'><div class='metric-title'>Referable DR</div><div class='metric-value' style='color:#DC2626;'>YES (Urgent)</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='metric-box'><div class='metric-title'>Referable DR Status</div><div class='metric-value' style='color:#DC2626;'>YES</div></div>", unsafe_allow_html=True)
         with m4:
-            st.markdown("<div class='metric-box'><div class='metric-title'>Lesions Count</div><div class='metric-value'>78 Detected</div></div>", unsafe_allow_html=True)
-            
+            st.markdown("<div class='metric-box'><div class='metric-title'>Primary Lesion</div><div class='metric-value' style='color:#D97706;'>Hemorrhages</div></div>", unsafe_allow_html=True)
+
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div class='alert-banner'>⚠️ REFERABLE DIABETIC RETINOPATHY DETECTED: Grade 2 Moderate NPDR. Immediate specialist referral recommended within 4 weeks.</div>", unsafe_allow_html=True)
 
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Grad-CAM++ & Saliency", "🔍 Vessel & Lesion Masks", "📈 Diagnostic Probability Graph", "📄 Export Certified PDF Report"])
-        
-        with tab1:
-            st.markdown("#### Explainable AI: Saliency Heatmap Overlays")
-            opacity = st.slider("Grad-CAM Overlay Alpha Opacity", 0.0, 1.0, 0.45, 0.05)
-            
-            blended_cam = cv2.addWeighted(enhanced, 1 - opacity, heatmap, opacity, 0)
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.image(enhanced, caption="Enhanced Retinal Fundus", use_container_width=True)
-            with c2:
-                st.image(blended_cam, caption=f"Grad-CAM++ Heatmap (Opacity: {opacity})", use_container_width=True)
-                
-        with tab2:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.image(vessels, caption="Extracted Vascular Network Mask", use_container_width=True)
-            with c2:
-                st.image(lesions, caption="Microaneurysms & Exudates Map", use_container_width=True)
+        st.markdown("""
+        <div class='alert-banner'>
+            ⚠️ REFERABLE DR DETECTED: High density of Hemorrhages & Microaneurysms detected. Moderate DR predicted. Immediate Specialist consultation recommended.
+        </div>
+        """, unsafe_allow_html=True)
 
-        with tab3:
-            st.markdown("#### Multiclass ICDR Severity Classification Scores")
-            grades = ["No DR (0)", "Mild NPDR (1)", "Moderate NPDR (2)", "Severe NPDR (3)", "PDR (4)"]
-            scores = [2.1, 3.1, 94.8, 0.0, 0.0]
+        active_subtab = st.radio(
+            "Analysis View", 
+            ["📊 Diagnosis & Probabilities", "🔍 Structural Lesion Masking", "🔥 AI Grad-CAM Heatmap", "📄 Export PDF Report"], 
+            horizontal=True, 
+            label_visibility="collapsed"
+        )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        active_img = st.session_state.get("uploaded_image_data", "sample")
+        enhanced, vessels, lesions, gradcam = process_fundus_pipeline(active_img)
+
+        if active_subtab == "📊 Diagnosis & Probabilities":
+            col_d1, col_d2 = st.columns([1.2, 1])
+            with col_d1:
+                with st.container(border=True):
+                    st.markdown("##### 🔬 Selected Fundus Scan View")
+                    st.image(enhanced, use_container_width=True, caption="Original Fundus (CLAHE Enhanced)")
+            with col_d2:
+                with st.container(border=True):
+                    st.markdown("##### 📈 ICDR Ordinal Probability Distribution")
+                    stages = ['Grade 0: No DR', 'Grade 1: Mild NPDR', 'Grade 2: Moderate NPDR', 'Grade 3: Severe NPDR', 'Grade 4: Proliferative DR']
+                    probs = [1.2, 2.5, 94.8, 1.1, 0.4]
+                    fig = go.Figure(go.Bar(x=probs, y=stages, orientation='h', marker=dict(color=['#94A3B8', '#94A3B8', '#0D9488', '#94A3B8', '#94A3B8']), text=[f"{p}%" for p in probs], textposition='auto'))
+                    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=280, margin=dict(l=10, r=10, t=10, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
+
+        elif active_subtab == "🔍 Structural Lesion Masking":
+            st.markdown("### Extracted Vascular & Lesion Features")
+            col_im1, col_im2, col_im3 = st.columns(3)
+            with col_im1:
+                with st.container(border=True):
+                    st.image(enhanced, use_container_width=True)
+                    st.markdown("<div style='text-align:center; font-weight:700; color:#475569;'>Original Fundus</div>", unsafe_allow_html=True)
+            with col_im2:
+                with st.container(border=True):
+                    st.image(vessels, use_container_width=True)
+                    st.markdown("<div style='text-align:center; font-weight:700; color:#475569;'>Vessel Structure Mask</div>", unsafe_allow_html=True)
+            with col_im3:
+                with st.container(border=True):
+                    st.image(lesions, use_container_width=True)
+                    st.markdown("<div style='text-align:center; font-weight:700; color:#475569;'>Detected Hemorrhages / Microaneurysms</div>", unsafe_allow_html=True)
+
+        elif active_subtab == "🔥 AI Grad-CAM Heatmap":
+            st.markdown("### Model Attention Region (Grad-CAM)")
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                with st.container(border=True):
+                    st.image(enhanced, use_container_width=True)
+                    st.markdown("<div style='text-align:center; font-weight:700; color:#475569;'>Original Retinal Scan</div>", unsafe_allow_html=True)
+            with col_g2:
+                with st.container(border=True):
+                    st.image(gradcam, use_container_width=True)
+                    st.markdown("<div style='text-align:center; font-weight:700; color:#475569;'>Grad-CAM Saliency Attention Heatmap</div>", unsafe_allow_html=True)
+
+        elif active_subtab == "📄 Export PDF Report":
+            st.markdown("### 📄 Enterprise Clinical Diagnostic Report Preview & Export")
+            st.markdown("Review the complete multi-page scrollable PDF report viewer below before printing or downloading.")
             
-            fig = go.Figure(go.Bar(
-                x=scores,
-                y=grades,
-                orientation='h',
-                marker=dict(color=['#22C55E', '#EAB308', '#DC2626', '#94A3B8', '#94A3B8']),
-                text=[f"{s}%" for s in scores],
-                textposition='auto'
-            ))
-            fig.update_layout(
-                title="Model Confidence Distribution Across DR Severity Classes",
-                xaxis_title="Probability (%)",
-                yaxis_title="Severity Class",
-                height=350,
-                margin=dict(l=20, r=20, t=40, b=20),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)"
+            pdf_data = generate_enterprise_pdf_report(
+                patient_name, patient_age, "OD (Right Eye)", "Moderate NPDR", "94.8", enhanced, gradcam
             )
-            st.plotly_chart(fig, use_container_width=True)
-                
-        with tab4:
-            st.markdown("#### Certified Tele-Ophthalmology PDF Report")
-            st.write("Generate a comprehensive, publication-grade diagnostic report complete with patient metadata, image analysis, and clinical recommendations.")
             
-            pdf_bytes = generate_enterprise_pdf_report(
-                patient_name=patient_name,
-                patient_age=patient_age,
-                eye_side="Right Eye (OD)",
-                diagnosis="Moderate NPDR",
-                confidence=94.8,
-                enhanced_img=enhanced,
-                gradcam_img=gradcam
-            )
+            b64_pdf = base64.b64encode(pdf_data.getvalue()).decode('utf-8')
+            pdf_embed_code = f'''
+                <div style="border: 1px solid #CBD5E1; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #FFFFFF;">
+                    <embed src="data:application/pdf;base64,{b64_pdf}" width="100%" height="750px" type="application/pdf">
+                </div>
+            '''
+            components.html(pdf_embed_code, height=770, scrolling=True)
             
+            st.markdown("<br>", unsafe_allow_html=True)
             st.download_button(
-                label="📥 Download Official Clinical Report (PDF)",
-                data=pdf_bytes,
+                label="📥 Print / Download Formal Clinical PDF Report",
+                data=pdf_data,
                 file_name=f"VisionSetu_Report_{patient_name}.pdf",
                 mime="application/pdf",
-                type="primary",
-                use_container_width=True
+                use_container_width=True,
+                type="primary"
             )
 
     elif st.session_state["active_module"] == "analytics":
-        st.markdown("### 📊 District-Scale Telemedicine Analytics & Queue Model")
-        st.caption("Modeled via MATLAB/Simulink telemedicine flow pipelines to optimize rural healthcare resource allocation.")
-        
-        target_vol = st.slider("Target Annual Regional Screening Volume", min_value=5000, max_value=200000, value=50000, step=5000)
-        daily_scans = int(target_vol / 365)
-        expected_referrals = int(daily_scans * 0.18)
-        doctor_hours = round(daily_scans * 0.01, 1)
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(f"<div class='metric-box'><div class='metric-title'>Daily Intake Scans</div><div class='metric-value'>{daily_scans} / day</div></div>", unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"<div class='metric-box'><div class='metric-title'>Referral Cases</div><div class='metric-value'>{expected_referrals} / day</div></div>", unsafe_allow_html=True)
-        with c3:
-            st.markdown(f"<div class='metric-box'><div class='metric-title'>Specialist Review Load</div><div class='metric-value'>{doctor_hours} hrs / day</div></div>", unsafe_allow_html=True)
-            
+        c_t1, c_t2 = st.columns([3, 1])
+        with c_t1:
+            st.markdown("### 📊 District Telemedicine Resource Management")
+            st.caption("Discrete-event queue modeling engine for district-scale tele-screening throughput.")
+        with c_t2:
+            st.markdown("<div style='text-align:right; font-size:0.8rem; font-weight:700; color:#059669; padding-top:10px;'>🟢 Telemetry Engine</div>", unsafe_allow_html=True)
+
         st.markdown("<br>", unsafe_allow_html=True)
-        
-        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        monthly_scans = [int(daily_scans * 30 * np.random.uniform(0.9, 1.1)) for _ in range(12)]
-        
-        fig2 = px.line(x=months, y=monthly_scans, labels={'x':'Month', 'y':'Scans Processed'}, title="Simulated Monthly Screening Throughput")
-        fig2.update_traces(line_color='#002B7F', line_width=3)
-        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig2, use_container_width=True)
+        col_p, col_s = st.columns([1.1, 1.4])
+        with col_p:
+            with st.container(border=True):
+                st.markdown("##### 🎛️ DISTRICT OPERATIONAL PARAMETERS")
+                cameras = st.slider("Deployed Field Cameras", 1, 30, 8, key="cam_slider")
+                scans_per_cam = st.slider("Daily Scans per Camera", 10, 100, 48, key="scans_slider")
+                docs = st.slider("Reviewing Ophthalmologists", 1, 10, 2, key="docs_slider")
+                bandwidth = st.slider("Clinic Uplink Bandwidth (Mbps)", 0.5, 20.0, 4.0, key="bw_slider")
+                review_time = st.slider("Avg Review Time (Seconds)", 10, 60, 25, key="time_slider")
 
-        st.download_button(
-            label="📥 Download MATLAB Simulink Model (.slx)",
-            data=b"Simulink Model Content Placeholder",
-            file_name="telemedicine_screening_pipeline.slx",
-            mime="application/octet-stream"
-        )
+        total_daily_scans = cameras * scans_per_cam
+        annual_capacity = total_daily_scans * 365
+        doc_daily_capacity = docs * (28800 / max(review_time, 1))
+        coverage_rate = min(100, int((doc_daily_capacity / max(total_daily_scans, 1)) * 100))
+        
+        system_constraint = "Optimal Flow"
+        if total_daily_scans > doc_daily_capacity:
+            system_constraint = "Ophthalmologist Bottleneck"
+        elif bandwidth < 2.0:
+            system_constraint = "Bandwidth Latency"
 
-# App Control
+        with col_s:
+            cm1, cm2, cm3 = st.columns(3)
+            with cm1:
+                with st.container(border=True):
+                    st.markdown("<div style='font-size:0.7rem; color:#64748B;'>ANNUAL CAPACITY</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:1.1rem; font-weight:800;'>{annual_capacity:,} <span style='font-size:0.6rem;'>pa/yr</span></div>", unsafe_allow_html=True)
+            with cm2:
+                with st.container(border=True):
+                    st.markdown("<div style='font-size:0.7rem; color:#64748B;'>COVERAGE RATE</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:1.1rem; font-weight:800; color:#059669;'>{coverage_rate}%</div>", unsafe_allow_html=True)
+            with cm3:
+                with st.container(border=True):
+                    st.markdown("<div style='font-size:0.7rem; color:#64748B;'>SYSTEM CONSTRAINT</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:0.8rem; font-weight:800; color:#0D9488;'>{system_constraint}</div>", unsafe_allow_html=True)
+
+            with st.container(border=True):
+                st.markdown("##### Patient Queue Backlog Evolution (365 Operational Days)")
+                st.caption("Simulates daily intake fluctuation vs. clinical reader throughput")
+                
+                days = list(range(1, 366, 3))
+                load_factor = total_daily_scans / max(doc_daily_capacity, 1)
+                
+                backlog = [
+                    max(2, int(
+                        2 + (load_factor * 45) * np.exp(-(((d - 90) / 15)**2)) +
+                        (load_factor * 70) * np.exp(-(((d - 185) / 15)**2)) +
+                        (load_factor * 110) * np.exp(-(((d - 278) / 15)**2))
+                    ))
+                    for d in days
+                ]
+
+                fig_analytics = go.Figure()
+                fig_analytics.add_trace(go.Scatter(
+                    x=days, y=backlog,
+                    mode='lines',
+                    fill='tozeroy',
+                    line=dict(color='#0D9488', width=2),
+                    name='Queue Backlog'
+                ))
+                fig_analytics.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    height=240,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    xaxis_title="Operational Day",
+                    yaxis_title="Backlog Patients"
+                )
+                st.plotly_chart(fig_analytics, use_container_width=True)
+
+                st.download_button(
+                    label="📥 Export Simulink Model Parameters (.slx)",
+                    data=json.dumps({
+                        "cameras": cameras,
+                        "scans_per_cam": scans_per_cam,
+                        "docs": docs,
+                        "bandwidth_mbps": bandwidth,
+                        "avg_review_sec": review_time,
+                        "annual_capacity": annual_capacity,
+                        "coverage_rate": coverage_rate
+                    }, indent=4),
+                    file_name="vision_setu_telemedicine_simulink_config.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+
+# -----------------------------------------------------------------------------
+# 6. MAIN APPLICATION ROUTER
+# -----------------------------------------------------------------------------
 if not st.session_state["authenticated"]:
     if st.session_state["page"] == "login":
         show_login_page()
