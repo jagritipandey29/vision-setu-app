@@ -36,7 +36,6 @@ if "uploaded_image_data" not in st.session_state:
 
 USER_DB_FILE = "users_db.json"
 
-# Robust Local JSON Storage and Persistence (Zero Firebase)
 def load_users():
     default_users = {
         "Shweta": {
@@ -86,72 +85,22 @@ def save_user(username, password, full_name, gender, age):
 # -----------------------------------------------------------------------------
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #F8FAFC;
-        color: #0F172A;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #E2E8F0;
-        border-right: 1px solid #CBD5E1;
-    }
-    .metric-box {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }
-    .metric-title {
-        font-size: 0.72rem;
-        color: #64748B;
-        text-transform: uppercase;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        margin-bottom: 6px;
-    }
-    .metric-value {
-        font-size: 1.3rem;
-        font-weight: 800;
-        color: #0F172A;
-    }
-    .alert-banner {
-        background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%);
-        border: 1px solid #FECACA;
-        border-left: 6px solid #DC2626;
-        padding: 14px 18px;
-        border-radius: 10px;
-        color: #991B1B;
-        font-weight: 600;
-        font-size: 0.92rem;
-        margin-bottom: 20px;
-    }
-    .hero-title {
-        font-size: 2.3rem;
-        font-weight: 800;
-        color: #0F172A;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-    .hero-subtitle {
-        font-size: 1.02rem;
-        color: #475569;
-        text-align: center;
-        max-width: 750px;
-        margin: 0 auto 25px auto;
-        line-height: 1.5;
-    }
-    .stButton>button {
-        border-radius: 10px;
-        font-weight: 600;
-        padding: 0.5rem 1rem;
-    }
+    .stApp { background-color: #F8FAFC; color: #0F172A; }
+    [data-testid="stSidebar"] { background-color: #E2E8F0; border-right: 1px solid #CBD5E1; }
+    .metric-box { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    .metric-title { font-size: 0.72rem; color: #64748B; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .metric-value { font-size: 1.3rem; font-weight: 800; color: #0F172A; }
+    .alert-banner { background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); border: 1px solid #FECACA; border-left: 6px solid #DC2626; padding: 14px 18px; border-radius: 10px; color: #991B1B; font-weight: 600; font-size: 0.92rem; margin-bottom: 20px; }
+    .hero-title { font-size: 2.3rem; font-weight: 800; color: #0F172A; text-align: center; margin-bottom: 10px; }
+    .hero-subtitle { font-size: 1.02rem; color: #475569; text-align: center; max-width: 750px; margin: 0 auto 25px auto; line-height: 1.5; }
+    .stButton>button { border-radius: 10px; font-weight: 600; padding: 0.5rem 1rem; }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 3. DYNAMIC RETINAL IMAGE PROCESSING & PREDICTION PIPELINE
+# 3. RETINAL IMAGE PROCESSING PIPELINE
 # -----------------------------------------------------------------------------
-def process_fundus_pipeline(img_input):
+def process_fundus_pipeline(img_input, selected_severity="Grade 2: Moderate NPDR"):
     if img_input is not None and img_input != "sample":
         try:
             image = Image.open(img_input).convert('RGB')
@@ -169,26 +118,37 @@ def process_fundus_pipeline(img_input):
         cv2.circle(img_np, (240, 300), 15, (40, 10, 10), -1)
         cv2.circle(img_np, (180, 380), 18, (30, 5, 5), -1)
     
-    # Dynamic Severity Estimation based on image pixel characteristics
-    mean_val = np.mean(img_np)
-    std_val = np.std(img_np)
-    
-    if mean_val < 70:
+    # Mapping based on user selection
+    if "Mild" in selected_severity:
         grade = "Grade 1: Mild NPDR"
-        conf = 91.2
-        probs = [5.2, 82.4, 9.8, 2.0, 0.6]
+        conf = 92.4
+        probs = [6.1, 88.3, 4.2, 1.1, 0.3]
         referable = "NO (Monitor)"
         color_code = "#CA8A04"
-    elif mean_val > 140:
+    elif "No DR" in selected_severity:
         grade = "Grade 0: No DR"
-        conf = 96.5
-        probs = [91.5, 6.2, 1.8, 0.3, 0.2]
+        conf = 97.1
+        probs = [94.2, 4.1, 1.2, 0.3, 0.2]
         referable = "NO"
         color_code = "#16A34A"
+    elif "Severe" in selected_severity:
+        grade = "Grade 3: Severe NPDR"
+        conf = 93.9
+        probs = [0.5, 1.2, 8.4, 88.2, 1.7]
+        referable = "YES (Urgent)"
+        color_code = "#DC2626"
+    elif "Proliferative" in selected_severity:
+        grade = "Grade 4: Proliferative DR"
+        conf = 95.6
+        probs = [0.2, 0.5, 2.1, 5.2, 92.0]
+        referable = "YES (Emergency)"
+        color_code = "#991B1B"
     else:
         grade = "Grade 2: Moderate NPDR"
         conf = 94.8
         probs = [1.2, 2.5, 94.8, 1.1, 0.4]
+        referable = "YES"
+        color_code = "#DC2626"
     
     lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
     l, a, b = cv2.split(lab)
@@ -211,8 +171,8 @@ def process_fundus_pipeline(img_input):
         "grade": grade,
         "confidence": conf,
         "probabilities": probs,
-        "referable": referable if 'referable' in locals() else "YES",
-        "color_code": color_code if 'color_code' in locals() else "#DC2626"
+        "referable": referable,
+        "color_code": color_code
     }
     
     return enhanced, vessels, lesions, gradcam, analysis_results
@@ -224,13 +184,11 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
 
     p.setFillColor(colors.HexColor("#002B7F"))
     p.rect(0, height - 30, width, 30, fill=True, stroke=False)
-    
-    p.setFillColor(colors.HexColor("#002B7F"))
     p.setFont("Helvetica-Bold", 15)
     p.drawString(40, height - 55, "TELE-OPHTHALMOLOGY DIAGNOSTIC REPORT")
     p.setFont("Helvetica", 8.5)
     p.setFillColor(colors.HexColor("#64748B"))
-    p.drawString(40, height - 70, f"Patient Identifier: {patient_name.upper()}-105A3C60 | Age: {patient_age} | Eye: {eye_side} | Case Ref: 105a3c60-9e2f")
+    p.drawString(40, height - 70, f"Patient Identifier: {patient_name.upper()}-105A3C60 | Age: {patient_age} | Eye: {eye_side}")
 
     p.setStrokeColor(colors.HexColor("#CBD5E1"))
     p.setLineWidth(1)
@@ -254,7 +212,6 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
 
     img_size = 110
     y_pos = height - 305
-    
     temp_orig = "temp_orig.jpg"
     temp_grad = "temp_grad.jpg"
     Image.fromarray(enhanced_img).save(temp_orig)
@@ -263,28 +220,15 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
     p.drawImage(temp_orig, 90, y_pos, width=img_size, height=img_size)
     p.drawImage(temp_grad, 310, y_pos, width=img_size, height=img_size)
     
-    p.setFillColor(colors.HexColor("#0F172A"))
-    p.setFont("Helvetica-Bold", 9)
-    p.drawString(115, y_pos - 12, "Original Retinal Fundus")
-    p.drawString(325, y_pos - 12, "Grad-CAM++ Saliency Heatmap")
-
-    p.setFont("Helvetica-Bold", 9.5)
-    p.drawString(40, height - 330, "LESION-LEVEL SALIENCY FINDINGS:")
-    p.setFont("Helvetica", 8.5)
-    p.drawString(40, height - 345, "• Vascular caliber variations and exudative deposits analyzed.")
-    p.drawString(40, height - 360, "• Microaneurysm candidates segmented across posterior pole.")
-
     p.showPage()
     p.save()
     buffer.seek(0)
-    
     if os.path.exists(temp_orig): os.remove(temp_orig)
     if os.path.exists(temp_grad): os.remove(temp_grad)
-    
     return buffer
 
 # -----------------------------------------------------------------------------
-# 4. AUTHENTICATION PAGES
+# 4. AUTHENTICATION
 # -----------------------------------------------------------------------------
 def show_login_page():
     col1, col2, col3 = st.columns([1, 1.4, 1])
@@ -390,6 +334,20 @@ def show_dashboard():
         st.markdown(f"**Patient:** {patient_name}")
         st.markdown(f"**Age/Gender:** {patient_age} yrs / {patient_gender}")
         st.divider()
+        
+        # Severity Override Control in Sidebar for clinician ease
+        st.markdown("### ⚙️ Diagnostic Override")
+        selected_severity = st.selectbox(
+            "Target ICDR Severity Grade",
+            [
+                "Grade 2: Moderate NPDR",
+                "Grade 1: Mild NPDR",
+                "Grade 0: No DR",
+                "Grade 3: Severe NPDR",
+                "Grade 4: Proliferative DR"
+            ]
+        )
+        st.divider()
         if st.button("🚪 Logout session", use_container_width=True):
             st.session_state["authenticated"] = False
             st.session_state["page"] = "login"
@@ -465,7 +423,7 @@ def show_dashboard():
 
     elif st.session_state["active_module"] == "pacs":
         active_img = st.session_state.get("uploaded_image_data", "sample")
-        enhanced, vessels, lesions, gradcam, analysis = process_fundus_pipeline(active_img)
+        enhanced, vessels, lesions, gradcam, analysis = process_fundus_pipeline(active_img, selected_severity)
 
         m1, m2, m3, m4 = st.columns(4)
         with m1:
@@ -475,12 +433,12 @@ def show_dashboard():
         with m3:
             st.markdown(f"<div class='metric-box'><div class='metric-title'>Referable DR Status</div><div class='metric-value' style='color:{analysis['color_code']};'>{analysis['referable']}</div></div>", unsafe_allow_html=True)
         with m4:
-            st.markdown("<div class='metric-box'><div class='metric-title'>Primary Lesion</div><div class='metric-value' style='color:#D97706;'>Exudates / Microaneurysms</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='metric-box'><div class='metric-title'>Primary Lesion</div><div class='metric-value' style='color:#D97706;'>Vascular / Exudates</div></div>", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown(f"""
         <div class='alert-banner'>
-            ⚠️ AI DIAGNOSTIC RESULT: {analysis['grade']} identified with {analysis['confidence']}% confidence. Please review Grad-CAM and lesion masks below.
+            ℹ️ CURRENT DIAGNOSTIC STATUS: {analysis['grade']} active (Selected from sidebar override). Confidence: {analysis['confidence']}%.
         </div>
         """, unsafe_allow_html=True)
 
@@ -522,7 +480,7 @@ def show_dashboard():
             with col_im3:
                 with st.container(border=True):
                     st.image(lesions, use_container_width=True)
-                    st.markdown("<div style='text-align:center; font-weight:700; color:#475569;'>Detected Hemorrhages / Microaneurysms</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='text-align:center; font-weight:700; color:#475569;'>Detected Lesions</div>", unsafe_allow_html=True)
 
         elif active_subtab == "🔥 AI Grad-CAM Heatmap":
             st.markdown("### Model Attention Region (Grad-CAM)")
@@ -538,8 +496,6 @@ def show_dashboard():
 
         elif active_subtab == "📄 Export PDF Report":
             st.markdown("### 📄 Enterprise Clinical Diagnostic Report Preview & Export")
-            st.markdown("Review the complete multi-page scrollable PDF report viewer below before printing or downloading.")
-            
             pdf_data = generate_enterprise_pdf_report(
                 patient_name, patient_age, "OD (Right Eye)", analysis['grade'], str(analysis['confidence']), enhanced, gradcam
             )
