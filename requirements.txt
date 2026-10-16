@@ -1,0 +1,7 @@
+streamlit
+numpy
+opencv-python
+Pillow
+plotly
+reportlab
+firebase-admin
