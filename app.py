@@ -21,7 +21,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Local session state user database (Zero Firebase dependency)
+# In-memory local user management (Zero Firebase dependency)
 if "mock_users" not in st.session_state:
     st.session_state["mock_users"] = {
         "admin": {
@@ -61,18 +61,18 @@ if "active_module" not in st.session_state:
 if "uploaded_image_data" not in st.session_state:
     st.session_state["uploaded_image_data"] = None
 
-# Clinical CSS Styling
+# Original CSS Styling
 st.markdown("""
 <style>
     .stApp { background-color: #F8FAFC; color: #0F172A; }
-    [data-testid="stSidebar"] { background-color: #E2E8F0; border-right: 1px solid #CBD5E1; }
+    [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
     .metric-box { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .metric-title { font-size: 0.72rem; color: #64748B; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .metric-value { font-size: 1.3rem; font-weight: 800; color: #0F172A; }
+    .metric-title { font-size: 0.75rem; color: #64748B; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .metric-value { font-size: 1.4rem; font-weight: 800; color: #0F172A; }
     .alert-banner { background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); border: 1px solid #FECACA; border-left: 6px solid #DC2626; padding: 14px 18px; border-radius: 10px; color: #991B1B; font-weight: 600; font-size: 0.92rem; margin-bottom: 20px; }
-    .hero-title { font-size: 2.3rem; font-weight: 800; color: #0F172A; text-align: center; margin-bottom: 10px; }
-    .hero-subtitle { font-size: 1.02rem; color: #475569; text-align: center; max-width: 750px; margin: 0 auto 25px auto; line-height: 1.5; }
-    .stButton>button { border-radius: 10px; font-weight: 600; padding: 0.5rem 1rem; }
+    .hero-title { font-size: 2.5rem; font-weight: 800; color: #0F172A; text-align: center; margin-bottom: 10px; }
+    .hero-subtitle { font-size: 1.05rem; color: #475569; text-align: center; max-width: 780px; margin: 0 auto 25px auto; line-height: 1.5; }
+    .stButton>button { border-radius: 8px; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -209,21 +209,24 @@ def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosi
     
     return buffer
 
-# Authentication Pages
+# Auth Pages
 def show_login_page():
-    col1, col2, col3 = st.columns([1, 1.4, 1])
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
         with st.container(border=True):
-            if os.path.exists("logo.jpg"):
-                st.image("logo.jpg", width=90)
-            elif os.path.exists("logo.png"):
-                st.image("logo.png", width=90)
-            else:
-                st.markdown("<h1 style='text-align: center; color: #002B7F;'>👁️</h1>", unsafe_allow_html=True)
-                
-            st.markdown("<h2 style='text-align: center; color: #002B7F; font-weight: 800;'>Vision Setu Portal</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: #64748B; font-size: 0.85rem;'>Clinical Tele-Ophthalmology Diagnostic System</p>", unsafe_allow_html=True)
+            # Render logo image if exists, else fallback
+            logo_found = False
+            for logo_file in ["logo.jpg", "logo.png", "logo.jpeg"]:
+                if os.path.exists(logo_file):
+                    st.image(logo_file, width=110)
+                    logo_found = True
+                    break
+            if not logo_found:
+                st.markdown("<h1 style='text-align: center;'>👁️</h1>", unsafe_allow_html=True)
+
+            st.markdown("<h2 style='text-align: center; color: #002B7F;'>Vision Setu Portal</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #64748B; font-size: 0.88rem;'>Clinical Tele-Ophthalmology Diagnostic System</p>", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
             
             username = st.text_input("Username / Patient ID", key="login_user")
@@ -240,15 +243,15 @@ def show_login_page():
                 else:
                     st.error("Invalid Username or Password!")
                     
-            if st.button("Register New Patient Account", use_container_width=True):
+            if st.button("Register New Patient Account", use_container_width=True, type="secondary"):
                 st.session_state["page"] = "register"
                 st.rerun()
 
 def show_register_page():
-    col1, col2, col3 = st.columns([1, 1.4, 1])
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
         with st.container(border=True):
-            st.markdown("<h3 style='text-align: center; color:#002B7F; font-weight: 800;'>Patient Registration</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; color:#002B7F;'>Patient Registration</h3>", unsafe_allow_html=True)
             full_name = st.text_input("Full Name", key="reg_name")
             gender = st.selectbox("Gender", ["Female", "Male", "Other"], key="reg_gender")
             age = st.number_input("Age", min_value=1, max_value=120, value=30, key="reg_age")
@@ -272,7 +275,7 @@ def show_register_page():
                 st.session_state["page"] = "login"
                 st.rerun()
 
-# Dashboard & Modules
+# Dashboard Application Layout
 def show_dashboard():
     users = load_users()
     user_info = users.get(st.session_state["current_user"], {})
@@ -305,8 +308,10 @@ def show_dashboard():
         st.selectbox("Lang", ["EN", "हिंदी"], label_visibility="collapsed")
 
     with st.sidebar:
-        if os.path.exists("logo.jpg"):
-            st.image("logo.jpg", width=70)
+        for logo_file in ["logo.jpg", "logo.png", "logo.jpeg"]:
+            if os.path.exists(logo_file):
+                st.image(logo_file, width=80)
+                break
         st.markdown(f"**Patient:** {patient_name}")
         st.markdown(f"**Age/Gender:** {patient_age} yrs / {patient_gender}")
         st.divider()
@@ -450,7 +455,7 @@ def show_dashboard():
             mime="application/octet-stream"
         )
 
-# Main Control
+# App Control
 if not st.session_state["authenticated"]:
     if st.session_state["page"] == "login":
         show_login_page()
