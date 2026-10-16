@@ -8,6 +8,7 @@ import numpy as np
 import cv2
 from PIL import Image
 import plotly.graph_objects as go
+import plotly.express as px
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -21,7 +22,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# In-memory local user management (Zero Firebase dependency)
+# Local session state user database (Zero Firebase dependency)
 if "mock_users" not in st.session_state:
     st.session_state["mock_users"] = {
         "admin": {
@@ -61,7 +62,7 @@ if "active_module" not in st.session_state:
 if "uploaded_image_data" not in st.session_state:
     st.session_state["uploaded_image_data"] = None
 
-# Original CSS Styling
+# Custom CSS
 st.markdown("""
 <style>
     .stApp { background-color: #F8FAFC; color: #0F172A; }
@@ -76,7 +77,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Image Processing Pipeline
+# Image Processing Pipeline & Grad-CAM Simulation
 def process_fundus_pipeline(img_input):
     if img_input is not None and img_input != "sample":
         try:
@@ -110,7 +111,7 @@ def process_fundus_pipeline(img_input):
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
     gradcam = cv2.addWeighted(enhanced, 0.55, heatmap, 0.45, 0)
     
-    return enhanced, vessels, lesions, gradcam
+    return enhanced, vessels, lesions, gradcam, heatmap
 
 def generate_enterprise_pdf_report(patient_name, patient_age, eye_side, diagnosis, confidence, enhanced_img, gradcam_img):
     buffer = BytesIO()
@@ -215,7 +216,6 @@ def show_login_page():
     with col2:
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
         with st.container(border=True):
-            # Render logo image if exists, else fallback
             logo_found = False
             for logo_file in ["logo.jpg", "logo.png", "logo.jpeg"]:
                 if os.path.exists(logo_file):
@@ -223,7 +223,7 @@ def show_login_page():
                     logo_found = True
                     break
             if not logo_found:
-                st.markdown("<h1 style='text-align: center;'>👁️</h1>", unsafe_allow_html=True)
+                st.markdown("<h1 style='text-align: center; color: #002B7F;'>👁️</h1>", unsafe_allow_html=True)
 
             st.markdown("<h2 style='text-align: center; color: #002B7F;'>Vision Setu Portal</h2>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #64748B; font-size: 0.88rem;'>Clinical Tele-Ophthalmology Diagnostic System</p>", unsafe_allow_html=True)
@@ -275,7 +275,7 @@ def show_register_page():
                 st.session_state["page"] = "login"
                 st.rerun()
 
-# Dashboard Application Layout
+# Dashboard Layout
 def show_dashboard():
     users = load_users()
     user_info = users.get(st.session_state["current_user"], {})
@@ -376,7 +376,7 @@ def show_dashboard():
     elif st.session_state["active_module"] == "pacs":
         st.markdown("### 🩺 Clinician PACS & Diagnostic Workspace")
         
-        enhanced, vessels, lesions, gradcam = process_fundus_pipeline(st.session_state["uploaded_image_data"])
+        enhanced, vessels, lesions, gradcam, heatmap = process_fundus_pipeline(st.session_state["uploaded_image_data"])
         
         m1, m2, m3, m4 = st.columns(4)
         with m1:
@@ -391,14 +391,19 @@ def show_dashboard():
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div class='alert-banner'>⚠️ REFERABLE DIABETIC RETINOPATHY DETECTED: Grade 2 Moderate NPDR. Immediate specialist referral recommended within 4 weeks.</div>", unsafe_allow_html=True)
 
-        tab1, tab2, tab3 = st.tabs(["📊 Saliency & Heatmap", "🔍 Vessel & Lesion Masks", "📄 Export Certified PDF Report"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Grad-CAM++ & Saliency", "🔍 Vessel & Lesion Masks", "📈 Diagnostic Probability Graph", "📄 Export Certified PDF Report"])
         
         with tab1:
+            st.markdown("#### Explainable AI: Saliency Heatmap Overlays")
+            opacity = st.slider("Grad-CAM Overlay Alpha Opacity", 0.0, 1.0, 0.45, 0.05)
+            
+            blended_cam = cv2.addWeighted(enhanced, 1 - opacity, heatmap, opacity, 0)
+            
             c1, c2 = st.columns(2)
             with c1:
-                st.image(enhanced, caption="Enhanced Retinal Image", use_container_width=True)
+                st.image(enhanced, caption="Enhanced Retinal Fundus", use_container_width=True)
             with c2:
-                st.image(gradcam, caption="Grad-CAM++ Saliency Heatmap Overlay", use_container_width=True)
+                st.image(blended_cam, caption=f"Grad-CAM++ Heatmap (Opacity: {opacity})", use_container_width=True)
                 
         with tab2:
             c1, c2 = st.columns(2)
@@ -406,8 +411,32 @@ def show_dashboard():
                 st.image(vessels, caption="Extracted Vascular Network Mask", use_container_width=True)
             with c2:
                 st.image(lesions, caption="Microaneurysms & Exudates Map", use_container_width=True)
-                
+
         with tab3:
+            st.markdown("#### Multiclass ICDR Severity Classification Scores")
+            grades = ["No DR (0)", "Mild NPDR (1)", "Moderate NPDR (2)", "Severe NPDR (3)", "PDR (4)"]
+            scores = [2.1, 3.1, 94.8, 0.0, 0.0]
+            
+            fig = go.Figure(go.Bar(
+                x=scores,
+                y=grades,
+                orientation='h',
+                marker=dict(color=['#22C55E', '#EAB308', '#DC2626', '#94A3B8', '#94A3B8']),
+                text=[f"{s}%" for s in scores],
+                textposition='auto'
+            ))
+            fig.update_layout(
+                title="Model Confidence Distribution Across DR Severity Classes",
+                xaxis_title="Probability (%)",
+                yaxis_title="Severity Class",
+                height=350,
+                margin=dict(l=20, r=20, t=40, b=20),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+                
+        with tab4:
             st.markdown("#### Certified Tele-Ophthalmology PDF Report")
             st.write("Generate a comprehensive, publication-grade diagnostic report complete with patient metadata, image analysis, and clinical recommendations.")
             
@@ -431,7 +460,7 @@ def show_dashboard():
             )
 
     elif st.session_state["active_module"] == "analytics":
-        st.markdown("### 📊 District-Scale Telemedicine Analytics & Simulink Queue Model")
+        st.markdown("### 📊 District-Scale Telemedicine Analytics & Queue Model")
         st.caption("Modeled via MATLAB/Simulink telemedicine flow pipelines to optimize rural healthcare resource allocation.")
         
         target_vol = st.slider("Target Annual Regional Screening Volume", min_value=5000, max_value=200000, value=50000, step=5000)
@@ -448,6 +477,15 @@ def show_dashboard():
             st.markdown(f"<div class='metric-box'><div class='metric-title'>Specialist Review Load</div><div class='metric-value'>{doctor_hours} hrs / day</div></div>", unsafe_allow_html=True)
             
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        monthly_scans = [int(daily_scans * 30 * np.random.uniform(0.9, 1.1)) for _ in range(12)]
+        
+        fig2 = px.line(x=months, y=monthly_scans, labels={'x':'Month', 'y':'Scans Processed'}, title="Simulated Monthly Screening Throughput")
+        fig2.update_traces(line_color='#002B7F', line_width=3)
+        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig2, use_container_width=True)
+
         st.download_button(
             label="📥 Download MATLAB Simulink Model (.slx)",
             data=b"Simulink Model Content Placeholder",
