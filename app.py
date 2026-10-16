@@ -100,7 +100,7 @@ st.markdown("""
 # -----------------------------------------------------------------------------
 # 3. RETINAL IMAGE PROCESSING PIPELINE
 # -----------------------------------------------------------------------------
-def process_fundus_pipeline(img_input, selected_severity="Grade 2: Moderate NPDR"):
+def process_fundus_pipeline(img_input, selected_severity):
     if img_input is not None and img_input != "sample":
         try:
             image = Image.open(img_input).convert('RGB')
@@ -118,7 +118,7 @@ def process_fundus_pipeline(img_input, selected_severity="Grade 2: Moderate NPDR
         cv2.circle(img_np, (240, 300), 15, (40, 10, 10), -1)
         cv2.circle(img_np, (180, 380), 18, (30, 5, 5), -1)
     
-    # Mapping based on user selection
+    # Mapping based on dropdown selection
     if "Mild" in selected_severity:
         grade = "Grade 1: Mild NPDR"
         conf = 92.4
@@ -335,17 +335,17 @@ def show_dashboard():
         st.markdown(f"**Age/Gender:** {patient_age} yrs / {patient_gender}")
         st.divider()
         
-        # Severity Override Control in Sidebar for clinician ease
-        st.markdown("### ⚙️ Diagnostic Override")
+        st.markdown("### ⚙️ Diagnostic Grade Selector")
         selected_severity = st.selectbox(
-            "Target ICDR Severity Grade",
+            "Select Target Severity",
             [
-                "Grade 2: Moderate NPDR",
                 "Grade 1: Mild NPDR",
+                "Grade 2: Moderate NPDR",
                 "Grade 0: No DR",
                 "Grade 3: Severe NPDR",
                 "Grade 4: Proliferative DR"
-            ]
+            ],
+            key="severity_override_box"
         )
         st.divider()
         if st.button("🚪 Logout session", use_container_width=True):
@@ -438,7 +438,7 @@ def show_dashboard():
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown(f"""
         <div class='alert-banner'>
-            ℹ️ CURRENT DIAGNOSTIC STATUS: {analysis['grade']} active (Selected from sidebar override). Confidence: {analysis['confidence']}%.
+            ℹ️ DIAGNOSTIC STATUS: Currently displaying <b>{analysis['grade']}</b>. (You can change this anytime from the sidebar selector).
         </div>
         """, unsafe_allow_html=True)
 
